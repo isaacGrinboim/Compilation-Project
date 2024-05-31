@@ -1,0 +1,110 @@
+%{
+    #include <stdio.h>
+    #include <iostream>
+#include "hw3_output.hpp"
+    #include "types.h"
+    #include "symbol_table.h"
+
+    extern int yylineno;
+    extern int yylex();
+    extern TableStack tables;
+    int yyerror(const char* message);
+
+    using namespace output;
+%}
+
+    %nonassoc VOID
+    %nonassoc INT
+    %nonassoc BYTE
+    %nonassoc B
+    %nonassoc BOOL
+    %nonassoc CONST
+    %nonassoc TRUE
+    %nonassoc FALSE
+    %nonassoc IF
+    %nonassoc RETURN
+    %nonassoc WHILE
+    %nonassoc BREAK
+    %nonassoc CONTINUE
+    %nonassoc SC
+    %nonassoc COMMA
+    %nonassoc COMMENT
+    %nonassoc ID
+    %nonassoc NUM
+    %nonassoc STRING
+	%nonassoc OVERRIDE
+
+    %right ASSIGN
+
+    %left OR
+    %left AND
+    %left RELOP
+    %left SUB_ADD
+    %left DIV_MUL
+	%right NOT
+    %left LPAREN RPAREN LBRACE RBRACE
+    %right ELSE
+
+
+%%
+Program: Statements                                                      {$$ = new Program(); tables.pop_scope();}
+
+
+Statements: Statement                                               {$$ = new Statements(dynamic_cast<Statement*>($1));}
+            | Statements Statement                                  {$$ = new Statements(dynamic_cast<Statements*>($1), dynamic_cast<Statement*>($2));}
+
+Statement: LBRACE {tables.push_scope();} Statements {tables.pop_scope();} RBRACE                           {}
+           | Type ID SC                                             {$$ = new Statement(dynamic_cast<Type*>($1), $2);}
+           | Type ID ASSIGN Exp SC                                  {$$ = new Statement(dynamic_cast<Type*>($1), $2, dynamic_cast<Exp*>($4));}
+           | ID ASSIGN Exp SC                                       {$$ = new Statement($1, dynamic_cast<Exp*>($3));}
+           | Call SC                                                {$$ = new Statement(dynamic_cast<Call*>($1));}
+           | RETURN SC                                              {$$ = new Statement(new Exp(), true);}
+           | RETURN Exp SC                                          {$$ = new Statement(dynamic_cast<Exp*>($2), true);}
+           | IF LPAREN CheckBool RPAREN OS Statement                      {$$ = new Statement("IF", dynamic_cast<Exp*>($3));tables.pop_scope();}
+           | IF LPAREN CheckBool RPAREN OS Statement  ELSE {tables.pop_scope();} OS  Statement   {$$ = new Statement("IF ELSE", dynamic_cast<Exp*>($3)); tables.pop_scope();}
+           | WHILE LPAREN CheckBool RPAREN  {tables.push_scope(true);} Statement                 {$$ = new Statement("WHILE", dynamic_cast<Exp*>($3)); tables.pop_scope();}
+           | BREAK SC                                               {$$ = new Statement($1);}
+           | CONTINUE SC                                            {$$ = new Statement($1);}
+
+Call: ID LPAREN ExpList RPAREN                                      {$$ = new Call($1, $3);}
+
+
+ExpList: Exp                                                        {$$ = new ExpList($1);}
+
+
+Type: INT                                                           {$$ = new Type("int");}
+      | BYTE                                                        {$$ = new Type("byte");}
+      | BOOL                                                        {$$ = new Type("bool");}
+
+Exp: LPAREN Exp RPAREN                                              {$$ = new Exp(dynamic_cast<Exp*>($2));}
+     | Exp SUB_ADD Exp                                              {$$ = new Exp($1, $3, $2->value, "int");}
+     | Exp DIV_MUL Exp                                             {$$ = new Exp($1, $3, $2->value, "int");}
+     | ID                                                            {$$ = new Exp(true, $1);}
+     | Call                                                         {$$ = new Exp(false, $1);}
+     | NUM                                                          {$$ = new Exp($1, "int");}
+     | NUM B                                                        {$$ = new Exp($1, "byte");}
+     | STRING                                                       {$$ = new Exp($1, "string");}
+     | TRUE                                                         {$$ = new Exp($1, "bool");}
+     | FALSE                                                        {$$ = new Exp($1, "bool");}
+     | NOT Exp                                                      {$$ = new Exp($2, $2, $1->value, "bool");}
+     | Exp AND Exp                                                  {$$ = new Exp($1, $3, $2->value, "bool");}
+     | Exp OR Exp                                                   {$$ = new Exp($1, $3, $2->value, "bool");}
+     | Exp RELOP Exp                                                {$$ = new Exp($1, $3, $2->value, "relop");}
+     | LPAREN Type RPAREN Exp                                       {$$ = new Exp($4, $2);}
+
+OS:                                                                 {tables.push_scope();}
+CheckBool: Exp                                                      {check_bool($1);}
+%%
+
+TableStack tables = TableStack();
+int main(){
+        int res = yyparse();
+
+        //tables.check_program();
+        return res;
+}
+
+int yyerror(const char * message){
+	errorSyn(yylineno);
+	exit(0);
+}
